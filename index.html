@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0E1430">
+  <title>Đảo Đèn Lồng</title>
+  <link rel="stylesheet" href="./src/client/style.css">
+  <script type="importmap">
+    {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}
+  </script>
+</head>
+<body>
+  <main id="game" class="game" data-screen="menu">
+    <canvas id="world" tabindex="0" aria-label="Đảo Đèn Lồng, góc nhìn thứ ba"></canvas>
+
+    <div id="hud" class="hud" hidden>
+      <header class="hud-top">
+        <div class="hud-left">
+          <div class="hud-card fire-card">
+            <span class="hud-label">Ngọn Lửa</span>
+            <div class="fire-values"><div id="flame-icons" aria-hidden="true"></div><strong id="flames">3</strong></div>
+          </div>
+          <button id="pause-button" class="hud-pause" type="button" aria-label="Tạm dừng (Esc hoặc P)" title="Tạm dừng (Esc / P)"><span aria-hidden="true"></span></button>
+        </div>
+        <div class="clock">
+          <span id="night-label" class="eyebrow"></span>
+          <time id="time">00:00</time>
+        </div>
+        <dl class="hud-card hud-score">
+          <div><dt class="hud-label">Đèn đã thắp</dt><dd><strong id="lit">0</strong><span id="lantern-total"></span></dd></div>
+          <div><dt class="hud-label">Điểm</dt><dd><strong id="score">0</strong></dd></div>
+        </dl>
+      </header>
+
+      <div id="wayfinder" class="wayfinder" hidden aria-hidden="true"><span id="wayfinder-arrow">↑</span><span id="wayfinder-distance"></span></div>
+
+      <footer class="hud-bottom">
+        <div class="play-hints" aria-label="Điều khiển">
+          <span><kbd>WASD</kbd> <kbd>↑↓←→</kbd> Di chuyển</span>
+          <span><kbd>Space</kbd> Nhảy</span>
+          <span>Kéo chuột để xoay camera</span>
+        </div>
+        <div class="hud-inventory">
+          <p id="notice" class="notice" role="status" hidden></p>
+          <p id="interact-prompt" class="interact-prompt" hidden><kbd>E</kbd> <span id="interact-text"></span></p>
+          <div class="hud-card inventory-card">
+            <div class="inventory-line"><span class="hud-label">Đom đóm</span><strong id="carried"></strong></div>
+            <div id="mote-slots" class="mote-slots" aria-hidden="true"></div>
+          </div>
+        </div>
+        <div class="cooldowns" aria-label="Kỹ năng">
+          <div id="dash-cooldown" class="hud-card ability">
+            <div><strong>Lướt</strong><span id="dash-status" class="ability-status"></span></div>
+            <div><span class="cooldown-track" aria-hidden="true"><i></i></span><kbd>Shift / Chuột phải</kbd></div>
+          </div>
+          <div id="pulse-cooldown" class="hud-card ability">
+            <div><strong>Tỏa Sáng</strong><span id="pulse-status" class="ability-status"></span></div>
+            <div><span class="cooldown-track" aria-hidden="true"><i></i></span><kbd>F</kbd></div>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <section id="menu" class="overlay hero" aria-labelledby="menu-title">
+      <div class="hero-content">
+        <span class="crest" aria-hidden="true"><i class="lantern-icon"></i></span>
+        <h1 id="menu-title">Đảo Đèn Lồng</h1>
+        <p id="load-error" class="load-error" role="alert" hidden></p>
+        <div class="menu-actions">
+          <button id="begin" class="primary" type="button" disabled>Bắt đầu</button>
+          <button id="menu-settings" class="secondary" type="button" disabled>Cài đặt</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="intro" class="overlay" role="dialog" aria-modal="true" aria-labelledby="intro-title" hidden>
+      <div class="panel intro-panel">
+        <p id="intro-night" class="eyebrow"></p>
+        <h2 id="intro-title"></h2>
+        <figure class="dialogue"><figcaption>Ông Đăng</figcaption><blockquote id="intro-dialogue"></blockquote></figure>
+        <p id="intro-objective" class="intro-objective"></p>
+        <div class="panel-actions"><button id="play" class="primary" type="button">Vào đêm</button><button id="intro-menu" class="secondary" type="button">Về menu</button></div>
+      </div>
+    </section>
+
+    <section id="pause-menu" class="overlay" role="dialog" aria-modal="true" aria-labelledby="pause-title" hidden>
+      <div class="panel compact">
+        <h2 id="pause-title">Tạm dừng</h2>
+        <div class="stack-actions">
+          <button id="resume" class="primary" type="button">Tiếp tục</button>
+          <button id="pause-retry" class="secondary" type="button">Chơi lại Đêm</button>
+          <button id="pause-settings" class="secondary" type="button">Cài đặt</button>
+          <button id="pause-exit" class="secondary" type="button">Về menu</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="settings" class="overlay" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+      <div class="panel compact">
+        <h2 id="settings-title">Cài đặt</h2>
+        <div class="settings-fields">
+          <label for="volume">Âm lượng <output id="volume-value" for="volume"></output></label>
+          <input id="volume" type="range" min="0" max="100" step="1">
+          <label for="sensitivity">Độ nhạy chuột <output id="sensitivity-value" for="sensitivity"></output></label>
+          <input id="sensitivity" type="range" min="25" max="200" step="5">
+        </div>
+        <button id="settings-back" class="primary" type="button">Quay lại</button>
+      </div>
+    </section>
+
+    <section id="summary" class="overlay" role="dialog" aria-modal="true" aria-labelledby="summary-title" hidden>
+      <div class="panel">
+        <p id="summary-night" class="eyebrow"></p>
+        <h2 id="summary-title"></h2>
+        <p id="summary-detail" class="intro-objective"></p>
+        <dl class="summary-stats">
+          <div><dt>Đèn đã thắp</dt><dd id="summary-lanterns"></dd></div>
+          <div><dt>Ngọn Lửa</dt><dd id="summary-flames"></dd></div>
+          <div><dt>Điểm đêm</dt><dd id="summary-score"></dd></div>
+        </dl>
+        <div class="panel-actions">
+          <button id="next-night" class="primary" type="button" hidden></button>
+          <button id="summary-retry" class="primary" type="button" hidden>Chơi lại Đêm</button>
+          <button id="summary-menu" class="secondary" type="button">Về menu</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="dawn" class="overlay" role="dialog" aria-modal="true" aria-labelledby="dawn-title" hidden>
+      <div class="panel dawn-panel">
+        <span class="crest" aria-hidden="true"><i class="lantern-icon"></i></span>
+        <h2 id="dawn-title">Bình Minh</h2>
+        <p class="intro-objective">Những ngọn đèn của Mây đã gọi bình minh về trên đảo.</p>
+        <dl class="summary-stats"><div><dt>Tổng điểm</dt><dd id="dawn-score"></dd></div></dl>
+        <button id="dawn-menu" class="primary" type="button">Về menu</button>
+      </div>
+    </section>
+  </main>
+  <script type="module">
+    import('./src/client/main.js').catch(error => {
+      const message = document.getElementById('load-error');
+      message.textContent = 'Không thể mở game. Hãy kiểm tra kết nối CDN và WebGL rồi tải lại trang.';
+      message.hidden = false;
+      console.error(error);
+    });
+  </script>
+</body>
+</html>

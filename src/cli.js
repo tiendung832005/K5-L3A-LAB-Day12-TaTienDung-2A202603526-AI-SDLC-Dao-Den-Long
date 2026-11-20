@@ -2,7 +2,8 @@ import { createWriteStream, readFileSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { parseArgs } from 'node:util';
-import { createSimulation, TICKS_PER_SECOND } from './sim/engine.js';
+import { BUTTONS, createSimulation, TICKS_PER_SECOND } from './sim/engine.js';
+import { DRIFTER_STATES, SHADE_STATES } from './sim/enemies.js';
 
 const contract = JSON.parse(readFileSync(new URL('../game.contract.json', import.meta.url), 'utf8'));
 const { tuning } = contract;
@@ -51,24 +52,47 @@ function optionalCount(object, key, name, max) {
 
 function validatePosition(entity, name) {
   requireObject(entity, name);
-  const position = Object.hasOwn(entity, 'pos') ? entity.pos : entity;
-  requireObject(position, `${name}.pos`);
-  for (const axis of ['x', 'y', 'z']) optionalNumber(position, axis, name);
+  if (Object.hasOwn(entity, 'pos')) validateVector(entity.pos, `${name}.pos`);
+  else for (const axis of ['x', 'y', 'z']) optionalNumber(entity, axis, name);
+}
+
+function validateVector(value, name) {
+  if (Array.isArray(value)) {
+    if (value.length !== 3 || !value.every(Number.isFinite)) throw new Error(`${name} must contain three finite numbers`);
+    return;
+  }
+  requireObject(value, name);
+  for (const axis of ['x', 'y', 'z']) optionalNumber(value, axis, name);
+}
+
+function optionalEnum(object, key, name, values) {
+  if (Object.hasOwn(object, key) && !values.includes(object[key])) {
+    throw new Error(`${name}.${key} must be one of ${values.join(', ')}`);
+  }
 }
 
 function validateScenario(scenario) {
   requireObject(scenario, 'scenario');
-  optionalBoolean(scenario, 'random_motes', 'scenario');
-  optionalBoolean(scenario, 'random_shades', 'scenario');
+  for (const field of ['random_motes', 'random_shades', 'random_drifters', 'wind_enabled']) {
+    optionalBoolean(scenario, field, 'scenario');
+  }
   optionalCount(scenario, 'carried', 'scenario', tuning.carry_capacity);
   optionalCount(scenario, 'flames', 'scenario', tuning.flames);
   if (Object.hasOwn(scenario, 'player')) {
-    validatePosition(scenario.player, 'scenario.player');
-    optionalCount(scenario.player, 'carried', 'scenario.player', tuning.carry_capacity);
-    optionalCount(scenario.player, 'flames', 'scenario.player', tuning.flames);
+    const { player } = scenario;
+    const name = 'scenario.player';
+    validatePosition(player, name);
+    optionalCount(player, 'carried', name, tuning.carry_capacity);
+    optionalCount(player, 'flames', name, tuning.flames);
+    optionalBoolean(player, 'grounded', name);
+    optionalNumber(player, 'facing_yaw_deg', name);
+    if (Object.hasOwn(player, 'vel')) validateVector(player.vel, `${name}.vel`);
+    for (const field of ['invuln_ticks', 'dash_cd_ticks', 'pulse_cd_ticks', 'charm_ticks']) {
+      optionalCount(player, field, name, Number.MAX_SAFE_INTEGER);
+    }
   }
 
-  for (const [key, prefix] of [['lanterns', 'L'], ['motes', 'M'], ['shades', 'S']]) {
+  for (const [key, prefix] of [['lanterns', 'L'], ['motes', 'M'], ['shades', 'S'], ['drifters', 'D'], ['charms', 'C']]) {
     if (!Object.hasOwn(scenario, key)) continue;
     const entities = scenario[key];
     if (!Array.isArray(entities)) throw new Error(`scenario.${key} must be an array`);
@@ -89,6 +113,19 @@ function validateScenario(scenario) {
           throw new Error(`${name} cannot have a full deposit while unlit`);
         }
       }
+      if (key === 'motes') {
+        optionalEnum(entity, 'kind', name, ['random', 'dropped']);
+        optionalCount(entity, 'ttl_ticks', name, Number.MAX_SAFE_INTEGER);
+      }
+      if (key === 'shades' || key === 'drifters') {
+        optionalEnum(entity, 'state', name, key === 'shades' ? SHADE_STATES : DRIFTER_STATES);
+        optionalCount(entity, 'state_ticks_left', name, Number.MAX_SAFE_INTEGER);
+      }
+      if (key === 'drifters') optionalCount(entity, 'stolen', name, 3);
+      if (key === 'charms') {
+        optionalBoolean(entity, 'available', name);
+        optionalCount(entity, 'respawn_ticks', name, Number.MAX_SAFE_INTEGER);
+      }
     }
   }
   return scenario;
@@ -107,7 +144,7 @@ function validateFrames(input) {
     }
     previousTick = tick;
     const input = {};
-    for (const key of ['jump', 'interact', 'pulse']) {
+    for (const key of BUTTONS) {
       optionalBoolean(frame, key, name);
       if (Object.hasOwn(frame, key)) input[key] = frame[key];
     }
@@ -143,9 +180,14 @@ function* simulate(simulation, frames, ticks, snapshotEvery) {
 
 function jsonl(record) {
   return JSON.stringify(record, (key, value) => {
+    if ((key === 'pos' || key === 'vel') && Array.isArray(value)) return value.map(round);
     if (key !== 'x' && key !== 'y' && key !== 'z') return value;
-    return Math.round(value * 1000) / 1000;
+    return round(value);
   }) + '\n';
+}
+
+function round(value) {
+  return Math.round(value * 1000) / 1000;
 }
 
 async function main() {
@@ -155,14 +197,16 @@ async function main() {
       night: { type: 'string', default: '1' },
       scenario: { type: 'string' },
       inputs: { type: 'string' },
-      ticks: { type: 'string', default: String(tuning.night1_duration_s * TICKS_PER_SECOND) },
+      ticks: { type: 'string' },
       out: { type: 'string' },
       'snapshot-every': { type: 'string', default: '10' },
     },
   });
   const seed = integerOption(values.seed, '--seed', Number.MIN_SAFE_INTEGER);
-  const night = integerOption(values.night, '--night', 1, 1);
-  const ticks = integerOption(values.ticks, '--ticks', 0);
+  const night = integerOption(values.night, '--night', 1, 3);
+  const ticks = values.ticks === undefined
+    ? tuning[`night${night}_duration_s`] * TICKS_PER_SECOND
+    : integerOption(values.ticks, '--ticks', 0);
   const snapshotEvery = integerOption(values['snapshot-every'], '--snapshot-every', 1);
   const scenario = values.scenario === undefined ? {} : validateScenario(readJson(values.scenario));
   const frames = values.inputs === undefined ? [] : validateFrames(readJson(values.inputs));
