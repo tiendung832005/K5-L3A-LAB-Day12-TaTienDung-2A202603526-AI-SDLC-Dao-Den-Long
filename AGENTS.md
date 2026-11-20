@@ -6,9 +6,9 @@
 - 3D Web Client: `index.html` + `src/client/` (Three.js, gọi trực tiếp `src/sim/`).
 - Tests & Verification: `tests/` (chạy qua `node --test tests/*.test.js`).
 
-## Quy tắc bắt buộc (Test Contract v1.2)
+## Quy tắc bắt buộc (Test Contract v1.3)
 
-`game.contract.json` khai báo `contract_version: "1.2"`.
+`game.contract.json` khai báo `contract_version: "1.3"`.
 
 1. Tách biệt tuyệt đối Core Logic (`src/sim/`) khỏi Renderer (`src/client/`). Không dùng `window`/`document` trong `src/sim/`.
 2. Đo khoảng cách XZ bằng `Math.hypot(dx, dz) <= r`, không cộng bán kính nhân vật. Pulse đo 3D từ chân Mây + 0.8m. Nhặt đom đóm và va chạm Bóng Mực còn yêu cầu `|dY| <= 1.5m`.

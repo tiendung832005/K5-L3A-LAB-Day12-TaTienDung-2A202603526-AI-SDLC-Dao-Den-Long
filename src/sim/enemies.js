@@ -114,7 +114,7 @@ function wander(shade, lanternById, lit, step, tuning, layout) {
   stepOutsideSafety(shade, shade.heading, step, lit, tuning.safe_radius);
 }
 
-export function moveShades(shades, player, lanternById, lit, speed, tuning, layout) {
+export function moveShades(shades, player, lanternById, lit, speed, tuning, layout, wanderOnly = false) {
   const safeRadius = tuning.safe_radius;
   for (const shade of shades) {
     const range = distance(shade, player);
@@ -148,7 +148,7 @@ export function moveShades(shades, player, lanternById, lit, speed, tuning, layo
     if (shade.state === 'chase') {
       if (range > 18 || player.respawn > 0) shade.state = 'wander';
     } else if (!wasDraining) {
-      shade.state = range <= 12 && player.respawn === 0 ? 'chase' : 'wander';
+      shade.state = !wanderOnly && range <= 12 && player.respawn === 0 ? 'chase' : 'wander';
     }
     if (shade.state === 'chase') {
       shade.targetLanternId = null;

@@ -532,7 +532,7 @@ export function createScene(renderer, initial, tuning, layout) {
   let lastDawn = false;
 
   function render(state, view, elapsed) {
-    const { yaw, foot, facing, walk, pulse, hit, dawn, backdrop, colorblind } = view;
+    const { yaw, foot, facing, walk, pulse, hit, dawn, backdrop, colorblind, orbit, shake = 0 } = view;
     if (lastDawn !== dawn) {
       updateSky(dawn);
       scene.fog.color.set(dawn ? '#ad7892' : COLORS.fog);
@@ -644,11 +644,16 @@ export function createScene(renderer, initial, tuning, layout) {
     }
     for (const { cloud, x, offset } of clouds) cloud.position.x = x + Math.sin(elapsed * 0.11 + offset) * 2.2;
 
-    const sin = Math.sin(yaw);
-    const cos = Math.cos(yaw);
-    camera.position.set(foot.x + sin * 8.5, foot.y + 4.1, foot.z + cos * 8.5);
-    const offset = backdrop && camera.aspect > 1.1 ? 3.7 : 0;
-    lookAt.set(foot.x - sin * 3.8 - cos * offset, foot.y + 1.55, foot.z - cos * 3.8 + sin * offset);
+    if (orbit) {
+      setPosition(camera, orbit);
+      lookAt.set(0, 0, 0);
+    } else {
+      const sin = Math.sin(yaw);
+      const cos = Math.cos(yaw);
+      camera.position.set(foot.x + sin * 8.5 + shake * cos, foot.y + 4.1 + shake * 0.32, foot.z + cos * 8.5 - shake * sin);
+      const offset = backdrop && camera.aspect > 1.1 ? 3.7 : 0;
+      lookAt.set(foot.x - sin * 3.8 - cos * offset, foot.y + 1.55, foot.z - cos * 3.8 + sin * offset);
+    }
     camera.lookAt(lookAt);
     for (const { fuelBar } of lanterns.values()) if (fuelBar.bar.visible) fuelBar.bar.quaternion.copy(camera.quaternion);
     renderer.render(scene, camera);
@@ -664,20 +669,21 @@ export function createScene(renderer, initial, tuning, layout) {
     }
   }
 
-  function projectLantern(lantern) {
+  function projectMarker(point, forceEdge = false) {
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
-    projected.set(lantern.x, lantern.y + 1.9, lantern.z);
+    projected.set(point.x, point.y, point.z);
     cameraSpace.copy(projected).applyMatrix4(camera.matrixWorldInverse);
     projected.project(camera);
     const inFront = cameraSpace.z < -camera.near;
-    if (inFront && Math.abs(projected.x) <= 1 && Math.abs(projected.y) <= 1 && projected.z <= 1) return null;
+    if (!forceEdge && inFront && Math.abs(projected.x) <= 1 && Math.abs(projected.y) <= 1 && projected.z <= 1) return null;
 
     const dx = inFront ? projected.x * width / 2 : cameraSpace.x * 14;
     const dy = inFront ? -projected.y * height / 2 : Math.max(1, cameraSpace.z) * 7;
     const insetX = Math.max(12, width / 2 - 43);
     const insetY = Math.max(18, height / 2 - (dy < 0 ? 92 : 148));
-    const factor = 1 / Math.max(Math.abs(dx) / insetX, Math.abs(dy) / insetY, 0.001);
+    if (Math.abs(dx) + Math.abs(dy) < 0.001) return { x: width / 2, y: height / 2 - insetY, angle: 0 };
+    const factor = 1 / Math.max(Math.abs(dx) / insetX, Math.abs(dy) / insetY);
     return { x: width / 2 + dx * factor, y: height / 2 + dy * factor, angle: Math.atan2(dx, -dy) };
   }
 
@@ -689,7 +695,7 @@ export function createScene(renderer, initial, tuning, layout) {
     renderer.renderLists.dispose();
   }
 
-  return { render, projectLantern, dispose };
+  return { render, projectMarker, projectLantern: lantern => projectMarker({ ...lantern, y: lantern.y + 1.9 }), dispose };
 }
 
 function disposeModels(root, disposeTextures = false) {

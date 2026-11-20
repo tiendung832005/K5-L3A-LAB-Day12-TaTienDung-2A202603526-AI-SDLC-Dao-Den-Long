@@ -1,9 +1,11 @@
 {
   "team": "2A202603526-TaTienDung",
-  "contract_version": "1.2",
-  "build_cmd": "node -v",
-  "run_cmd": "npx --yes serve . -l 3000",
+  "contract_version": "1.3",
+  "build_cmd": "npm install",
+  "run_cmd": "node src/launcher.js",
   "headless_cmd": "node src/cli.js",
+  "bench_cmd": "node src/bench.js",
+  "soak_cmd": "node src/soak.js",
   "tuning": {
     "player_speed": 6.0,
     "carry_capacity": 10,

@@ -1,6 +1,7 @@
 :root {
   color-scheme: dark;
   font-family: system-ui, sans-serif;
+  font-size: 18px;
   color: #f5eddb;
   background: #0e1430;
   --gold: #ffb347;
@@ -11,9 +12,12 @@
   --edge: clamp(12px, 2.5vw, 36px);
 }
 
+:root.large-text { font-size: 22.5px; }
+
 *, *::before, *::after { box-sizing: border-box; }
 body, h1, h2, p, dl, dd, figure, blockquote { margin: 0; }
 [hidden] { display: none !important; }
+.game[data-screen='bench'] #menu { display: none; }
 button, input { font: inherit; }
 button { cursor: pointer; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--cream); outline-offset: 4px; }
@@ -22,6 +26,10 @@ h1, h2 { font-family: Cambria, Georgia, serif; font-weight: 500; color: var(--cr
 .game { position: relative; min-height: 100vh; min-height: 100dvh; overflow: hidden; isolation: isolate; }
 #world { position: absolute; width: 100%; height: 100%; display: block; outline: none; cursor: grab; touch-action: none; }
 #world:active { cursor: grabbing; }
+#screen-flash { position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: 0; background: #ffe9b0; }
+#screen-flash.hit { background: #c8102e; }
+.game.reduce-motion #screen-flash, .game[data-screen='bench'] #screen-flash { display: none; }
+.game.reduce-motion .clock time.urgent { animation: none; }
 .game::after {
   position: absolute; inset: 0; z-index: 1; pointer-events: none; content: '';
   background: linear-gradient(#0a0e23a6, transparent 25%, transparent 68%, #080b1bc2);
@@ -57,6 +65,7 @@ h1, h2 { font-family: Cambria, Georgia, serif; font-weight: 500; color: var(--cr
   background: linear-gradient(157deg, #222b4cf5, #0e1430fa 61%); box-shadow: 0 24px 70px #050815c0;
 }
 .panel.compact { width: min(100%, 370px); }
+.panel.settings-panel { width: min(100%, 640px); }
 .panel h2 { font-size: clamp(2.25rem, 6vw, 3.5rem); }
 .eyebrow { font-size: 0.8125rem; font-weight: 750; color: var(--gold); letter-spacing: 0.13em; text-transform: uppercase; }
 .dialogue { display: grid; gap: 7px; padding: 7px 0 7px 16px; border-left: 2px solid var(--gold); }
@@ -78,6 +87,22 @@ h1, h2 { font-family: Cambria, Georgia, serif; font-weight: 500; color: var(--cr
 .settings-fields input { width: 100%; accent-color: var(--gold); margin: 0 0 12px; }
 .settings-fields .setting-toggle { align-items: center; }
 .settings-fields .setting-toggle input { width: 18px; height: 18px; margin: 0; }
+.keybinding-settings h3 { margin: 0 0 10px; color: var(--cream); font-size: 1rem; }
+#keybindings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; }
+#keybindings > div { display: flex; justify-content: space-between; gap: 6px; align-items: center; min-width: 0; }
+.binding-key { min-height: 36px; padding: 4px 8px; font-size: 0.875rem; }
+.binding-key[aria-pressed='true'] { color: var(--cream); border-color: var(--gold); }
+#binding-status, #score-status, #leaderboard-status { font-size: 0.875rem; color: var(--muted); margin-block: 6px 0; }
+#binding-status { min-height: 1.3em; }
+#binding-status.warning, #score-status.warning { color: #ff8e92; }
+.score-form { display: grid; gap: 8px; }
+.score-form input { width: min(100%, 240px); padding: 9px; border: 1px solid var(--line); border-radius: 8px; color: #f5eddb; background: #0e1430; }
+.score-form input[aria-invalid='true'] { border-color: #ff8e92; }
+.dawn-panel .score-form { text-align: left; }
+#leaderboard-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+#leaderboard-table th, #leaderboard-table td { padding: 7px 5px; text-align: left; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+#leaderboard-table th { font-size: 0.8125rem; color: var(--muted); }
+#leaderboard-table th:last-child, #leaderboard-table td:last-child { text-align: right; }
 .summary-stats { display: flex; gap: 12px; flex-wrap: wrap; }
 .summary-stats > div { flex: 1; min-width: 78px; padding: 10px 0; border-top: 1px solid var(--line); }
 .summary-stats dt { color: var(--muted); font-size: 0.875rem; }
@@ -128,6 +153,12 @@ kbd { display: inline-block; padding: 1px 5px; border: 1px solid #ffe9b04a; bord
 .interact-prompt.warning, .notice.warning { color: #ff646b; }
 .game.colorblind :is(.clock time.urgent, .notice.warning, .interact-prompt.warning) { color: #ffffff; }
 .game.colorblind :is(.clock time.urgent, .notice.warning, .interact-prompt.warning)::before { content: '⚠︎'; margin-inline-end: 0.28em; font-size: 0.72em; }
+#visual-cues { position: absolute; top: calc(var(--edge) + 87px); left: var(--edge); display: grid; gap: 5px; justify-items: start; }
+.visual-cue { background: var(--glass); color: #ffcc7a; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 0.875rem; font-weight: 700; }
+.visual-cue::before { content: '⚠︎'; margin-inline-end: 0.45em; }
+.cue-arrow { position: absolute; display: grid; place-items: center; transform: translate(-50%, -50%); width: 30px; height: 30px; border: 1px solid #ffb3478c; border-radius: 50%; background: var(--glass); color: var(--gold); }
+.cue-arrow > span { display: block; line-height: 1; font-weight: 800; }
+.game.colorblind :is(.visual-cue, .cue-arrow, #binding-status.warning, #score-status.warning) { color: #fff; }
 .cooldowns { justify-self: end; display: grid; gap: 5px; width: min(100%, 190px); }
 .ability { display: grid; gap: 6px; padding: 7px 10px; }
 .ability > div { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
@@ -140,6 +171,8 @@ kbd { display: inline-block; padding: 1px 5px; border: 1px solid #ffe9b04a; bord
 #wayfinder-distance { font-size: 0.75rem; white-space: nowrap; }
 
 @media (max-width: 730px) {
+  :root { font-size: 16px; }
+  :root.large-text { font-size: 20px; }
   .hero { padding-inline: 24px; background: linear-gradient(90deg, #080c22ea, #080c2266 85%); }
   .hero h1 { margin-block: 20px 26px; }
   .hud-top, .hud-bottom { gap: 5px; }
@@ -158,6 +191,7 @@ kbd { display: inline-block; padding: 1px 5px; border: 1px solid #ffe9b04a; bord
   .hud-pause { width: 29px; height: 29px; }
 }
 @media (max-width: 475px) {
+  #keybindings { grid-template-columns: 1fr; }
   .hud-bottom { grid-template-columns: auto 1fr; }
   .hud-inventory { grid-column: 1 / -1; grid-row: 1; }
   .cooldowns { grid-column: 1 / -1; grid-row: 2; display: flex; margin-top: 5px; }

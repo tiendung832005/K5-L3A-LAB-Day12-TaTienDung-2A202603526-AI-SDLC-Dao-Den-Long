@@ -60,9 +60,9 @@ function advance(simulation, count, input) {
   return events;
 }
 
-test('v1.2 declares exact configuration and night map coordinates', () => {
-  // Ticket-03 shortens all three nights while the existing map coordinates still apply.
-  assert.equal(contract.contract_version, '1.2');
+test('v1.3 preserves the v1.2 tuning and night map coordinates', () => {
+  // Ticket-04 advances the contract version and keeps the Ticket-03 gameplay configuration.
+  assert.equal(contract.contract_version, '1.3');
   assert.deepEqual([contract.tuning.night1_duration_s, contract.tuning.night2_duration_s, contract.tuning.night3_duration_s], [240, 270, 300]);
   assert.equal(contract.tuning.score.per_mote, 5);
   assert.equal(contract.tuning.score.per_second_left, 0);

@@ -34,6 +34,31 @@ Yêu cầu dự án được phát hành tại **[Đảo Đèn Lồng Lab](https
 - HUD hiển thị sức chứa hiện tại. Đèn sáng có thanh dầu, còn đèn tắt thấp hơn và có vết rách. Tùy chọn **Bảng màu dễ phân biệt** trong Cài đặt được lưu trên trình duyệt.
 - CLI xuất ba sự kiện mới `lantern_out`, `refuel` và `fuel_drain` với trường `name` và `data`. Sự kiện `lantern_lit` có thêm `relight`; kết quả thắng tại bình minh có lý do `dawn_survived`. Số dầu hiển thị làm tròn đến một chữ số thập phân, còn vùng an toàn và điểm cuối đêm dùng số tick dầu chính xác.
 
+### Ticket-04 · Test Contract v1.3
+
+Cài đặt với Node.js 20 trở lên, chạy launcher rồi mở [Đảo Đèn Lồng trên localhost](http://localhost:3000/).
+
+```sh
+npm install
+node src/launcher.js
+```
+
+Chọn **Bảng xếp hạng** từ menu chính. Sau khi thua hoặc thắng Đêm 3, nhập tên từ 3 đến 12 chữ cái, chữ số, dấu `_` hoặc `-` để lưu điểm trên máy. Server lưu seed, số đêm thắng và giờ UTC trong `data/leaderboard.json`. Có thể chọn seed lượt chơi qua URL, ví dụ `?seed=7`. Cài đặt lưu phím điều khiển, Giảm chuyển động, Chữ lớn và bảng màu trên trình duyệt.
+
+```sh
+node src/cli.js --night 1 --seed 7 --ticks 600
+node src/launcher.js --export-leaderboard top10.json
+node src/soak.js --seed 7 --nights 10 --out soak.json
+node src/bench.js --seed 42 --duration 30 --out bench.json
+node --test
+```
+
+- Soak dùng cùng một tiến trình, xoay vòng ba đêm với seed tăng dần và chọn đứng yên với xác suất 20% ở mỗi lần đổi hướng 30 tick. Có thể chạy bằng `node --expose-gc src/soak.js` để gọi GC trước khi đo RSS cuối.
+- Benchmark cần màn hình đồ họa, WebGL và kết nối để tải Three.js qua CDN. Playwright dùng Chromium đã cài hoặc Chrome/Edge/Chromium hệ thống, rồi tải Chromium nếu chưa tìm thấy trình duyệt phù hợp. Trên Linux không có desktop, có thể chạy qua `xvfb-run`. Môi trường hiển thị và driver ảnh hưởng kết quả. [Tài liệu trình duyệt Playwright](https://playwright.dev/docs/browsers)
+- `load_ms` tính từ đầu tiến trình Node đến khung hình đầu. Benchmark bỏ qua 3 giây khởi động và đo các khoảng giữa hai khung hình nằm trọn trong cửa sổ lấy mẫu. `frame_ms_p95` dùng hạng gần nhất. `peak_mem_mb` lấy RSS cao nhất quan sát được của tiến trình trình duyệt chính, lấy mẫu mỗi giây. Giá trị là `null` khi hệ điều hành hoặc DevTools không cung cấp RSS trực tiếp.
+
+[Bằng chứng kiểm chứng Phase 4](docs/proof/phase4_proof.md)
+
 | Phase | Bạn nhận | Nộp |
 |---|---|---|
 | 1 | **PRD-0** (mô tả tổng quát) + Test Contract | tag `phase-1` |

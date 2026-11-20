@@ -4,6 +4,7 @@ import {
   drainTarget, fleeDrifter, makeDrifter, makeShade, moveDrifters, moveShades, pushShade, updateEnemyTimers, updateSafeZones,
 } from './enemies.js';
 import { byId, FUEL_SCALE, fuelValue, lanternCost, lowFuel, makeLantern, nearestLantern, playerCapacity } from './lanterns.js';
+import { mulberry32 } from './random.js';
 
 export { TICKS_PER_SECOND } from './player.js';
 export const BUTTONS = ['pause', 'jump', 'dash', 'interact', 'pulse'];
@@ -21,15 +22,6 @@ const RELIGHT_SCORE = 40;
 const DRAIN_STUN_SCORE = 15;
 const SURVIVING_LANTERN_SCORE = 50;
 
-function mulberry32(seed) {
-  return () => {
-    seed = (seed + 0x6d2b79f5) >>> 0;
-    let value = Math.imul(seed ^ (seed >>> 15), seed | 1);
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 function ids(prefix, entities) {
   const used = new Set(entities.map(entity => entity.id));
   let next = 1;
@@ -44,7 +36,7 @@ function xyz({ x, y, z }) {
   return [x, y, z];
 }
 
-export function createSimulation({ tuning, seed = 0, night = 1, scenario = {} }) {
+export function createSimulation({ tuning, seed = 0, night = 1, scenario = {}, benchmark = false }) {
   const layout = createLayout(night);
   const rules = NIGHTS[night];
   const random = mulberry32(seed);
@@ -53,6 +45,7 @@ export function createSimulation({ tuning, seed = 0, night = 1, scenario = {} })
   const stunTicks = tuning.pulse_stun_s * TICKS_PER_SECOND;
   const lanterns = (scenario.lanterns ?? layout.lanterns).map((spawn, index) => makeLantern(spawn, spawn.id ?? `L${index + 1}`, tuning));
   const lanternById = new Map(lanterns.map(lantern => [lantern.id, lantern]));
+  const benchmarkSafe = benchmark ? lanterns.filter(lantern => lantern.lit && !lowFuel(lantern, tuning)) : null;
   const fullFuel = tuning.fuel_max * FUEL_SCALE;
   const fuelPerMote = tuning.fuel_per_mote * FUEL_SCALE;
   const requiredLights = Math.ceil(tuning.win_ratio * lanterns.length);
@@ -307,6 +300,12 @@ export function createSimulation({ tuning, seed = 0, night = 1, scenario = {} })
   function step(input = {}) {
     if (reason !== null) return [];
     tick++;
+    if (benchmarkSafe) {
+      simTick++;
+      updateSafeZones(shades, benchmarkSafe, tuning.safe_radius);
+      moveShades(shades, player, lanternById, benchmarkSafe, tuning.shade_speed, tuning, layout, true);
+      return [];
+    }
     const events = [];
     const emit = (event, data) => events.push({ type: 'event', tick, event, ...data, score });
     const emitFuel = (name, data) => events.push({ type: 'event', tick, name, data });

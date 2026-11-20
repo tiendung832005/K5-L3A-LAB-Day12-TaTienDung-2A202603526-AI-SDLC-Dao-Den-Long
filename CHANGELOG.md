@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3 — Ticket-04 (Phase 4)
+
+- Launcher phục vụ game và lưu bảng xếp hạng cục bộ, với tùy chọn xuất 10 kết quả cao nhất.
+- Thêm soak headless qua nhiều đêm và benchmark WebGL headful với cảnh Đêm 1 được chuẩn hóa.
+- Thêm đổi phím, chỉ báo trực quan, giảm chuyển động và chữ lớn.
+
 ## v1.2 — Ticket-03 (Phase 3)
 
 ### Breaking changes từ v1.1
