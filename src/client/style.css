@@ -76,6 +76,8 @@ h1, h2 { font-family: Cambria, Georgia, serif; font-weight: 500; color: var(--cr
 .settings-fields label { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); gap: 10px; }
 .settings-fields output { color: var(--cream); font-weight: 700; font-variant-numeric: tabular-nums; }
 .settings-fields input { width: 100%; accent-color: var(--gold); margin: 0 0 12px; }
+.settings-fields .setting-toggle { align-items: center; }
+.settings-fields .setting-toggle input { width: 18px; height: 18px; margin: 0; }
 .summary-stats { display: flex; gap: 12px; flex-wrap: wrap; }
 .summary-stats > div { flex: 1; min-width: 78px; padding: 10px 0; border-top: 1px solid var(--line); }
 .summary-stats dt { color: var(--muted); font-size: 0.875rem; }
@@ -115,7 +117,7 @@ kbd { display: inline-block; padding: 1px 5px; border: 1px solid #ffe9b04a; bord
 .inventory-card { display: grid; gap: 7px; }
 .inventory-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .inventory-line strong { color: var(--cream); font-size: 0.875rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.mote-slots { display: flex; gap: clamp(3px, 0.6vw, 6px); }
+.mote-slots { display: grid; grid-template-columns: repeat(10, auto); gap: clamp(3px, 0.6vw, 6px); }
 .mote-slot { width: clamp(12px, 1.8vw, 25px); aspect-ratio: 1; border: 1px solid #ffe9b046; border-radius: 5px; background: #242d49; display: grid; place-items: center; }
 .mote-slot.filled { border-color: #ffb34791; background: #9e541f42; }
 .mote-slot.filled::after { content: ''; width: 37%; aspect-ratio: 1; border-radius: 50%; background: var(--cream); box-shadow: 0 0 9px var(--gold); }
@@ -123,6 +125,9 @@ kbd { display: inline-block; padding: 1px 5px; border: 1px solid #ffe9b04a; bord
 .notice { text-shadow: 0 2px 8px #070a1b, 0 2px 12px #070a1b; }
 .interact-prompt { padding: 5px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--glass); }
 .interact-prompt kbd { color: #251a1c; background: var(--gold); }
+.interact-prompt.warning, .notice.warning { color: #ff646b; }
+.game.colorblind :is(.clock time.urgent, .notice.warning, .interact-prompt.warning) { color: #ffffff; }
+.game.colorblind :is(.clock time.urgent, .notice.warning, .interact-prompt.warning)::before { content: '⚠︎'; margin-inline-end: 0.28em; font-size: 0.72em; }
 .cooldowns { justify-self: end; display: grid; gap: 5px; width: min(100%, 190px); }
 .ability { display: grid; gap: 6px; padding: 7px 10px; }
 .ability > div { display: flex; justify-content: space-between; gap: 8px; align-items: center; }

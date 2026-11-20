@@ -4,6 +4,7 @@ import { pipeline } from 'node:stream/promises';
 import { parseArgs } from 'node:util';
 import { BUTTONS, createSimulation, TICKS_PER_SECOND } from './sim/engine.js';
 import { DRIFTER_STATES, SHADE_STATES } from './sim/enemies.js';
+import { lanternCost, playerCapacity } from './sim/lanterns.js';
 
 const contract = JSON.parse(readFileSync(new URL('../game.contract.json', import.meta.url), 'utf8'));
 const { tuning } = contract;
@@ -76,13 +77,13 @@ function validateScenario(scenario) {
   for (const field of ['random_motes', 'random_shades', 'random_drifters', 'wind_enabled']) {
     optionalBoolean(scenario, field, 'scenario');
   }
-  optionalCount(scenario, 'carried', 'scenario', tuning.carry_capacity);
   optionalCount(scenario, 'flames', 'scenario', tuning.flames);
   if (Object.hasOwn(scenario, 'player')) {
     const { player } = scenario;
     const name = 'scenario.player';
     validatePosition(player, name);
-    optionalCount(player, 'carried', name, tuning.carry_capacity);
+    optionalCount(player, 'successful_lights', name, Number.MAX_SAFE_INTEGER);
+    optionalCount(player, 'carried', name, playerCapacity(player.successful_lights ?? 0, tuning));
     optionalCount(player, 'flames', name, tuning.flames);
     optionalBoolean(player, 'grounded', name);
     optionalNumber(player, 'facing_yaw_deg', name);
@@ -91,6 +92,7 @@ function validateScenario(scenario) {
       optionalCount(player, field, name, Number.MAX_SAFE_INTEGER);
     }
   }
+  optionalCount(scenario, 'carried', 'scenario', playerCapacity(scenario.player?.successful_lights ?? 0, tuning));
 
   for (const [key, prefix] of [['lanterns', 'L'], ['motes', 'M'], ['shades', 'S'], ['drifters', 'D'], ['charms', 'C']]) {
     if (!Object.hasOwn(scenario, key)) continue;
@@ -107,9 +109,12 @@ function validateScenario(scenario) {
       ids.add(id);
       if (key === 'lanterns') {
         optionalBoolean(entity, 'lit', name);
+        optionalBoolean(entity, 'ever_lit', name);
+        optionalNumber(entity, 'fuel', name);
+        if (entity.fuel < 0 || entity.fuel > tuning.fuel_max) throw new Error(`${name}.fuel must be from 0 to ${tuning.fuel_max}`);
         optionalCount(entity, 'deposited', name, tuning.lantern_cost);
         optionalCount(entity, 'charge', name, tuning.lantern_cost);
-        if (entity.lit === false && (entity.deposited ?? entity.charge) === tuning.lantern_cost) {
+        if (entity.lit === false && (entity.deposited ?? entity.charge) >= lanternCost(entity, tuning)) {
           throw new Error(`${name} cannot have a full deposit while unlit`);
         }
       }
@@ -120,6 +125,9 @@ function validateScenario(scenario) {
       if (key === 'shades' || key === 'drifters') {
         optionalEnum(entity, 'state', name, key === 'shades' ? SHADE_STATES : DRIFTER_STATES);
         optionalCount(entity, 'state_ticks_left', name, Number.MAX_SAFE_INTEGER);
+      }
+      if (key === 'shades' && entity.target_lantern_id != null && (typeof entity.target_lantern_id !== 'string' || !entity.target_lantern_id)) {
+        throw new Error(`${name}.target_lantern_id must be a non-empty string or null`);
       }
       if (key === 'drifters') optionalCount(entity, 'stolen', name, 3);
       if (key === 'charms') {

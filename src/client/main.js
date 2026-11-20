@@ -1,4 +1,5 @@
 import { createSimulation, TICKS_PER_SECOND } from '../sim/engine.js';
+import { lanternCost, nearestLantern } from '../sim/lanterns.js';
 import { createAudio } from './audio.js';
 import { createRenderer, createScene } from './scene.js';
 
@@ -18,7 +19,7 @@ const INITIAL_YAW = Math.PI;
 const PULSE_LENGTH = 0.57;
 const SETTING_KEY = 'lantern-island.settings';
 const NIGHTS = [
-  ['Đảo Bến', 'Mây à, gom đom đóm và mang ánh sáng về cho những ngọn đèn. Đèn đã thắp sẽ xua Bóng Mực ra xa.'],
+  ['Đảo Bến', 'Mây à, đèn sẽ cạn dầu dần. Hãy gom đom đóm để thắp và châm dầu, giữ đủ đèn sáng tới bình minh.'],
   ['Đảo Cau', 'Cầu tre nối hai bờ, còn bục nhảy đưa con qua biển mây. Nếu Gió Lạc cướp đom đóm, hãy tỏa sáng để lấy lại.'],
   ['Đảo Chuông', 'Theo đường dốc và bục nhảy để lên tháp chuông. Khi nghe báo gió mạnh, nhớ tránh mép đảo.'],
 ];
@@ -29,9 +30,9 @@ function loadSettings() {
   try {
     const stored = JSON.parse(localStorage.getItem(SETTING_KEY));
     const safe = (value, min, max, fallback) => Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
-    return { volume: safe(stored?.volume, 0, 100, 65), sensitivity: safe(stored?.sensitivity, 25, 200, 100) };
+    return { volume: safe(stored?.volume, 0, 100, 65), sensitivity: safe(stored?.sensitivity, 25, 200, 100), colorblind: stored?.colorblind === true };
   } catch {
-    return { volume: 65, sensitivity: 100 };
+    return { volume: 65, sensitivity: 100, colorblind: false };
   }
 }
 
@@ -75,7 +76,7 @@ function createSlots(parent, className, count) {
 }
 
 const flameIcons = createSlots($('flame-icons'), 'flame', tuning.flames);
-const moteSlots = createSlots($('mote-slots'), 'mote-slot', tuning.carry_capacity);
+const moteSlots = createSlots($('mote-slots'), 'mote-slot', tuning.capacity_max);
 const hudFields = Object.fromEntries(['flames', 'lit', 'lantern-total', 'score', 'time', 'carried', 'notice', 'interact-text',
   'interact-prompt', 'dash-status', 'dash-cooldown', 'pulse-status', 'pulse-cooldown', 'wayfinder', 'wayfinder-arrow',
   'wayfinder-distance'].map(id => [id, $(id)]));
@@ -132,7 +133,8 @@ function openIntro(nextNight) {
   $('intro-dialogue').textContent = dialogue;
   const minutes = Math.floor(state.time_left_s / 60);
   const seconds = String(state.time_left_s % 60).padStart(2, '0');
-  $('intro-objective').textContent = `Thắp ${state.lanterns.length} đèn trong ${minutes}:${seconds}.`;
+  const needed = Math.ceil(state.lanterns.length * tuning.win_ratio);
+  $('intro-objective').textContent = `Giữ ít nhất ${needed}/${state.lanterns.length} đèn sáng đến hết ${minutes}:${seconds}.`;
   show('intro');
 }
 
@@ -153,10 +155,19 @@ function replay() {
 }
 
 function displaySettings() {
+  $('colorblind').checked = settings.colorblind;
   for (const setting of ['volume', 'sensitivity']) {
     $(setting).value = settings[setting];
     $(`${setting}-value`).value = `${settings[setting]}%`;
   }
+}
+
+function saveSettings() {
+  try { localStorage.setItem(SETTING_KEY, JSON.stringify(settings)); } catch { /* Keep settings for this session. */ }
+}
+
+function applyPalette() {
+  $('game').classList.toggle('colorblind', settings.colorblind);
 }
 
 function openSettings(from) {
@@ -175,8 +186,8 @@ function showSummary() {
   if (won) campaignScore += state.score;
   $('summary-night').textContent = `Tổng kết · Đêm ${night}`;
   $('summary-title').textContent = won ? 'Đảo đã bừng sáng' : state.reason === 'no_flames' ? 'Mây đã hết lửa' : 'Đêm đã kết thúc';
-  $('summary-detail').textContent = won ? 'Mây đã thắp hết những ngọn đèn trên đảo.' :
-    state.reason === 'no_flames' ? 'Mây cần thêm ngọn lửa để đi tiếp.' : 'Vẫn còn đèn chưa thắp khi hết giờ.';
+  $('summary-detail').textContent = won ? 'Mây giữ đủ đèn sáng đến bình minh.' :
+    state.reason === 'no_flames' ? 'Mây cần thêm ngọn lửa để đi tiếp.' : 'Khi bình minh đến, số đèn đang sáng dưới mức cần thiết.';
   $('summary-lanterns').textContent = `${lit}/${state.lanterns.length}`;
   $('summary-flames').textContent = state.player.flames;
   $('summary-score').textContent = number.format(state.score);
@@ -212,9 +223,14 @@ for (const setting of ['volume', 'sensitivity']) {
     settings[setting] = Number(event.target.value);
     $(`${setting}-value`).value = `${settings[setting]}%`;
     if (setting === 'volume') audio.setVolume(settings.volume / 100);
-    try { localStorage.setItem(SETTING_KEY, JSON.stringify(settings)); } catch { /* Keep settings for this session. */ }
+    saveSettings();
   });
 }
+$('colorblind').addEventListener('change', event => {
+  settings.colorblind = event.target.checked;
+  applyPalette();
+  saveSettings();
+});
 
 window.addEventListener('keydown', event => {
   if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -283,17 +299,9 @@ function readButton(action, held) {
   return true;
 }
 
-function nearestUnlit() {
-  let target;
-  let distance = Infinity;
-  for (const lantern of state.lanterns) {
-    if (lantern.lit) continue;
-    const range = Math.hypot(lantern.x - state.player.x, lantern.z - state.player.z);
-    if (range >= distance) continue;
-    target = lantern;
-    distance = range;
-  }
-  return { target, distance };
+function nearbyLantern() {
+  // Even a full lantern decays during the timer step before an interaction is resolved.
+  return nearestLantern(state.player, state.lanterns, () => true, tuning.interact_radius);
 }
 
 function cooldown(id, seconds, max, readyText = 'Sẵn sàng') {
@@ -301,19 +309,21 @@ function cooldown(id, seconds, max, readyText = 'Sẵn sàng') {
   hudFields[`${id}-cooldown`].style.setProperty('--ready', `${100 * Math.max(0, 1 - seconds / max)}%`);
 }
 
-function updateHud(nearest) {
+function updateHud() {
   const { player } = state;
-  const { target, distance } = nearest;
   const seconds = Math.ceil(state.time_left_s);
   const minutes = String(Math.floor(seconds / 60)).padStart(2, '0');
   const remainder = String(seconds % 60).padStart(2, '0');
   text(hudFields.time, `${minutes}:${remainder}`);
   hudFields.time.dateTime = `PT${seconds}S`;
   hudFields.time.classList.toggle('urgent', seconds <= 30);
-  text(hudFields.carried, `${player.carried} / ${tuning.carry_capacity}`);
+  text(hudFields.carried, `${player.carried} / ${player.capacity}`);
   text(hudFields.flames, String(player.flames));
   flameIcons.forEach((icon, index) => icon.classList.toggle('lit', index < player.flames));
-  moteSlots.forEach((slot, index) => slot.classList.toggle('filled', index < player.carried));
+  moteSlots.forEach((slot, index) => {
+    slot.hidden = index >= player.capacity;
+    slot.classList.toggle('filled', index < player.carried);
+  });
   text(hudFields.lit, String(state.lanterns.filter(lantern => lantern.lit).length));
   text(hudFields['lantern-total'], `/ ${state.lanterns.length}`);
   text(hudFields.score, number.format(state.score));
@@ -325,11 +335,16 @@ function updateHud(nearest) {
   const notice = state.wind.active ? 'Gió mạnh đang thổi' : windWarning ? 'Gió mạnh sắp đến' :
     player.charm_s > 0 ? `Bùa Gió · ${Math.ceil(player.charm_s)} s` : '';
   hudFields.notice.hidden = notice === '';
+  hudFields.notice.classList.toggle('warning', state.wind.active || windWarning);
   text(hudFields.notice, notice);
 
-  const near = target && distance <= tuning.interact_radius;
-  hudFields['interact-prompt'].hidden = !near;
-  if (near) text(hudFields['interact-text'], `— Nạp ánh sáng (${target.deposited}/${tuning.lantern_cost})`);
+  const nearby = nearbyLantern();
+  hudFields['interact-prompt'].hidden = !nearby;
+  hudFields['interact-prompt'].classList.toggle('warning', !!nearby?.lit && nearby.fuel < tuning.low_fuel_threshold);
+  if (nearby) text(hudFields['interact-text'], nearby.lit ? `— Châm dầu (${nearby.fuel.toFixed(1)}%)` :
+    `— ${nearby.ever_lit ? 'Thắp lại' : 'Nạp ánh sáng'} (${nearby.deposited}/${lanternCost(nearby, tuning)})`);
+  const target = nearestLantern(player, state.lanterns, lantern => !lantern.lit) ??
+    nearestLantern(player, state.lanterns, lantern => lantern.fuel < tuning.low_fuel_threshold);
   const marker = target && scene.projectLantern(target);
   const arrow = hudFields.wayfinder;
   arrow.hidden = !marker;
@@ -337,7 +352,7 @@ function updateHud(nearest) {
   arrow.style.left = `${marker.x}px`;
   arrow.style.top = `${marker.y}px`;
   hudFields['wayfinder-arrow'].style.transform = `rotate(${marker.angle}rad)`;
-  text(hudFields['wayfinder-distance'], `${Math.round(distance)} m`);
+  text(hudFields['wayfinder-distance'], `${Math.round(Math.hypot(target.x - player.x, target.z - player.z))} m`);
 }
 
 function step() {
@@ -365,8 +380,10 @@ function step() {
   walk = Number(player.grounded && Math.hypot(dx, dz) > 0.002);
   if (Math.hypot(dx, dz) > 0.002) facing = Math.atan2(-dx, -dz);
 
-  for (const { event } of events) {
+  for (const record of events) {
+    const event = record.event ?? record.name;
     audio.play(event);
+    if (event === 'refuel') audio.play('deposit');
     if (event === 'pulse') pulse = { ...player, start: elapsed };
     if (event === 'player_hit') hitAt = elapsed;
     if (event === 'wind_warning') windWarningAt = state.sim_tick + 120;
@@ -385,7 +402,7 @@ function frame(now) {
   previousFrame = now;
   if (state.state !== 'paused') elapsed += dt;
   if (screen === 'play') {
-    const turnRight = keys.has('KeyE') && nearestUnlit().distance > tuning.interact_radius;
+    const turnRight = keys.has('KeyE') && !nearbyLantern();
     yaw = (yaw + (Number(turnRight) - Number(keys.has('KeyQ'))) * dt * 1.75) % (2 * Math.PI);
   }
   const ticking = () => screen === 'play' || screen === 'pause' || (screen === 'settings' && settingsReturn === 'pause');
@@ -405,13 +422,14 @@ function frame(now) {
     facing, foot, walk: screen === 'play' ? walk : 0,
     pulse: pulse && { ...pulse, progress: (elapsed - pulse.start) / PULSE_LENGTH },
     hit: elapsed - hitAt,
-    backdrop: screen === 'menu', dawn: screen === 'dawn',
+    backdrop: screen === 'menu', dawn: screen === 'dawn', colorblind: settings.colorblind,
   }, elapsed);
-  if (screen === 'play') updateHud(nearestUnlit());
+  if (screen === 'play') updateHud();
   requestAnimationFrame(frame);
 }
 
 resetNight(firstNight);
+applyPalette();
 $('begin').disabled = $('menu-settings').disabled = false;
 show('menu');
 requestAnimationFrame(frame);

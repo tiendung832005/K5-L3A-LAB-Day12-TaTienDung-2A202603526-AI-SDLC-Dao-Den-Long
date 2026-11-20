@@ -26,6 +26,14 @@ Yêu cầu dự án được phát hành tại **[Đảo Đèn Lồng Lab](https
 - Không ràng buộc công nghệ; chạy được trên macOS hoặc Linux.
 - Tuân theo **Test Contract** (chế độ headless) để được chấm tự động và so sánh với nhau.
 
+### Ticket-03 · Test Contract v1.2
+
+- Đêm 1, 2 và 3 kéo dài lần lượt 240, 270 và 300 giây. Mây thắng tại bình minh nếu còn Ngọn Lửa và giữ ít nhất 3/5, 4/6 hoặc 5/7 đèn sáng. Mỗi đèn sáng cuối đêm thưởng 50 điểm cộng phần nguyên của dầu còn lại. Mỗi Ngọn Lửa còn lại thưởng 50 điểm. `score.per_second_left: 0` ghi nhận việc bỏ thưởng thời gian.
+- Thắp lần đầu cần 10 đom đóm, còn thắp lại cần 5. Đèn sáng mất 1 dầu mỗi giây và mất thêm 5 dầu mỗi giây cho mỗi Bóng Mực đang hút. Dưới 30 dầu, vòng an toàn biến mất. Nhấn `E` gần đèn đang sáng để châm 10 dầu mỗi đom đóm, tối đa 100 dầu.
+- Nhặt và nạp mỗi đom đóm đều được 5 điểm. Thắp lần đầu thưởng thêm 100 điểm, thắp lại thưởng thêm 40. Mỗi lần thắp hoặc thắp lại tăng sức chứa thêm 2, từ 10 đến tối đa 20, rồi đặt lại đầu đêm. Đèn đặt sẵn trong scenario không tăng sức chứa.
+- HUD hiển thị sức chứa hiện tại. Đèn sáng có thanh dầu, còn đèn tắt thấp hơn và có vết rách. Tùy chọn **Bảng màu dễ phân biệt** trong Cài đặt được lưu trên trình duyệt.
+- CLI xuất ba sự kiện mới `lantern_out`, `refuel` và `fuel_drain` với trường `name` và `data`. Sự kiện `lantern_lit` có thêm `relight`; kết quả thắng tại bình minh có lý do `dawn_survived`. Số dầu hiển thị làm tròn đến một chữ số thập phân, còn vùng an toàn và điểm cuối đêm dùng số tick dầu chính xác.
+
 | Phase | Bạn nhận | Nộp |
 |---|---|---|
 | 1 | **PRD-0** (mô tả tổng quát) + Test Contract | tag `phase-1` |

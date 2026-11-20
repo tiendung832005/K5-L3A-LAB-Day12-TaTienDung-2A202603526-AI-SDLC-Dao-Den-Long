@@ -6,6 +6,7 @@ const COLORS = {
   sky: '#0E1430', fog: '#1B2350', grass: '#2F5D50', sand: '#C9B48A', wood: '#6B4A2F', clouds: '#12384A',
   lantern: '#FFB347', core: '#FFE9B0', unlit: '#5B5F6E', shade: '#120A1A', shadeRim: '#7A3CFF',
   stunned: '#3A3450', tunic: '#E8E2D0', scarf: '#C8102E', trim: '#F2C14E', drifter: '#8FA3B8',
+  accessibleRim: '#00B3FF', accessibleWarning: '#FFFFFF', lowFuel: '#FF646B',
 };
 
 function mesh(parent, geometry, material, x = 0, y = 0, z = 0) {
@@ -337,30 +338,96 @@ function makePlayer(scene, halo) {
   return { root, model, legs, shadow, charm };
 }
 
-function makeLantern(scene, halo, safeRadius) {
+function warningTexture() {
+  return texture(64, context => {
+    context.lineWidth = 5;
+    context.lineJoin = 'round';
+    context.strokeStyle = '#fff';
+    context.fillStyle = '#fff';
+    context.beginPath();
+    context.moveTo(32, 8);
+    context.lineTo(58, 54);
+    context.lineTo(6, 54);
+    context.closePath();
+    context.stroke();
+    context.fillRect(29, 25, 6, 14);
+    context.fillRect(29, 43, 6, 5);
+  });
+}
+
+function paperTears(body) {
+  const tears = new THREE.Group();
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.23, 0.45);
+  shape.lineTo(0.23, 0.21);
+  shape.lineTo(0.10, 0.08);
+  shape.lineTo(0.23, -0.20);
+  shape.lineTo(-0.12, -0.38);
+  shape.lineTo(-0.06, -0.05);
+  shape.lineTo(-0.24, 0.04);
+  shape.lineTo(-0.11, 0.19);
+  shape.closePath();
+  const geometry = new THREE.ShapeGeometry(shape);
+  const edge = new THREE.MeshBasicMaterial({ color: '#9B9CAD' });
+  const hole = new THREE.MeshBasicMaterial({ color: '#181927' });
+  for (let index = 0; index < 4; index++) {
+    const face = new THREE.Group();
+    face.rotation.y = Math.PI / 8 + index * Math.PI / 2;
+    mesh(face, geometry, edge, 0, 2.15, 0.77).scale.set(1.1, 1.08, 1);
+    mesh(face, geometry, hole, 0, 2.15, 0.775);
+    tears.add(face);
+  }
+  body.add(tears);
+  return tears;
+}
+
+const FUEL_BAR_WIDTH = 1.52;
+
+function makeFuelBar(root, warningMap) {
+  const bar = new THREE.Group();
+  bar.position.y = 4.3;
+  root.add(bar);
+  const track = mesh(bar, new THREE.PlaneGeometry(1.65, 0.26), new THREE.MeshBasicMaterial({
+    color: '#101226', transparent: true, opacity: 0.94, depthWrite: false,
+  }));
+  const fill = mesh(bar, new THREE.PlaneGeometry(FUEL_BAR_WIDTH, 0.14), new THREE.MeshBasicMaterial({
+    color: COLORS.lantern, transparent: true, depthWrite: false,
+  }), 0, 0, 0.003);
+  const warning = new THREE.Sprite(new THREE.SpriteMaterial({ map: warningMap, depthWrite: false }));
+  warning.position.x = 1.03;
+  warning.scale.setScalar(0.34);
+  bar.add(warning);
+  return { bar, track, fill, warning };
+}
+
+function makeLantern(scene, halo, warningMap, safeRadius) {
   const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
   const stone = surface('#727481', { flatShading: true });
   const metal = surface(COLORS.wood, { metalness: 0.27 });
   const roof = surface('#34354d');
   const pane = surface(COLORS.unlit, { emissive: COLORS.core, emissiveIntensity: 0 });
-  mesh(root, new THREE.CylinderGeometry(1.03, 1.15, 0.35, 8), stone, 0, 0.175);
-  mesh(root, new THREE.CylinderGeometry(0.4, 0.55, 0.92, 8), stone, 0, 0.76);
-  mesh(root, new THREE.CylinderGeometry(0.91, 0.78, 0.16, 8), metal, 0, 1.26);
-  mesh(root, new THREE.CylinderGeometry(0.83, 0.71, 1.66, 8), pane, 0, 2.15);
+  mesh(body, new THREE.CylinderGeometry(1.03, 1.15, 0.35, 8), stone, 0, 0.175);
+  mesh(body, new THREE.CylinderGeometry(0.4, 0.55, 0.92, 8), stone, 0, 0.76);
+  mesh(body, new THREE.CylinderGeometry(0.91, 0.78, 0.16, 8), metal, 0, 1.26);
+  mesh(body, new THREE.CylinderGeometry(0.83, 0.71, 1.66, 8), pane, 0, 2.15);
   const frame = new THREE.CylinderGeometry(0.034, 0.039, 1.69, 6);
   for (let index = 0; index < 8; index++) {
     const angle = index * TAU / 8;
-    const bar = mesh(root, frame, metal, Math.cos(angle) * 0.78, 2.15, Math.sin(angle) * 0.78);
+    const bar = mesh(body, frame, metal, Math.cos(angle) * 0.78, 2.15, Math.sin(angle) * 0.78);
     bar.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0),
       new THREE.Vector3(Math.cos(angle) * 0.12, 1.69, Math.sin(angle) * 0.12).normalize());
   }
-  mesh(root, new THREE.CylinderGeometry(0.97, 1.08, 0.13, 8), metal, 0, 3.02);
-  mesh(root, new THREE.CylinderGeometry(0.2, 1.12, 0.69, 8), roof, 0, 3.41);
-  mesh(root, new THREE.SphereGeometry(0.15, 10, 8), metal, 0, 3.8);
-  const aura = glow(root, halo, COLORS.lantern, 7.3, 2.2, 0.75);
+  mesh(body, new THREE.CylinderGeometry(0.97, 1.08, 0.13, 8), metal, 0, 3.02);
+  mesh(body, new THREE.CylinderGeometry(0.2, 1.12, 0.69, 8), roof, 0, 3.41);
+  mesh(body, new THREE.SphereGeometry(0.15, 10, 8), metal, 0, 3.8);
+  const tears = paperTears(body);
+  const fuelBar = makeFuelBar(root, warningMap);
+  const aura = glow(body, halo, COLORS.lantern, 7.3, 2.2, 0.75);
   const light = new THREE.PointLight(COLORS.lantern, 0, 18, 2);
   light.position.y = 2.42;
-  root.add(light);
+  body.add(light);
 
   const disk = mesh(root, new THREE.CircleGeometry(safeRadius, 64), new THREE.MeshBasicMaterial({
     color: COLORS.lantern, transparent: true, opacity: 0.105, depthWrite: false,
@@ -370,7 +437,7 @@ function makeLantern(scene, halo, safeRadius) {
   }), 0, 0.03);
   disk.rotation.x = ring.rotation.x = -Math.PI / 2;
   scene.add(root);
-  return { root, pane, light, aura, disk, ring };
+  return { root, body, tears, fuelBar, pane, light, aura, disk, ring };
 }
 
 function makeMote(scene, halo, geometry, material, phase) {
@@ -424,7 +491,8 @@ export function createScene(renderer, initial, tuning, layout) {
   addTerrain(scene, initial.lanterns, layout);
 
   const player = makePlayer(scene, halo);
-  const lanterns = new Map(initial.lanterns.map(({ id }) => [id, makeLantern(scene, halo, tuning.safe_radius)]));
+  const warningMap = warningTexture();
+  const lanterns = new Map(initial.lanterns.map(({ id }) => [id, makeLantern(scene, halo, warningMap, tuning.safe_radius)]));
   const moteGeometry = new THREE.IcosahedronGeometry(0.12, 1);
   const moteMaterial = new THREE.MeshBasicMaterial({ color: COLORS.core });
   const motes = new Map();
@@ -464,7 +532,7 @@ export function createScene(renderer, initial, tuning, layout) {
   let lastDawn = false;
 
   function render(state, view, elapsed) {
-    const { yaw, foot, facing, walk, pulse, hit, dawn, backdrop } = view;
+    const { yaw, foot, facing, walk, pulse, hit, dawn, backdrop, colorblind } = view;
     if (lastDawn !== dawn) {
       updateSky(dawn);
       scene.fog.color.set(dawn ? '#ad7892' : COLORS.fog);
@@ -488,11 +556,27 @@ export function createScene(renderer, initial, tuning, layout) {
     let lit = 0;
     for (const lantern of state.lanterns) {
       const model = lanterns.get(lantern.id);
+      const low = lantern.lit && lantern.fuel < tuning.low_fuel_threshold;
+      const glowLevel = low ? 0.3 + 0.7 * (1 + Math.cos(elapsed * TAU)) / 2 : 1;
       setPosition(model.root, lantern);
-      model.disk.visible = model.ring.visible = model.aura.visible = lantern.lit;
+      model.body.scale.y = lantern.lit ? 1 : 0.8;
+      model.tears.visible = !lantern.lit;
+      model.disk.visible = model.ring.visible = lantern.lit && !low;
+      model.aura.visible = lantern.lit;
+      model.aura.material.opacity = 0.75 * glowLevel;
       model.pane.color.set(lantern.lit ? COLORS.lantern : COLORS.unlit);
-      model.pane.emissiveIntensity = lantern.lit ? 0.72 : 0;
-      model.light.intensity = lantern.lit ? 115 + 5 * Math.sin(elapsed * 6) : 0;
+      model.pane.emissiveIntensity = lantern.lit ? 0.72 * glowLevel : 0;
+      model.light.intensity = lantern.lit ? 115 * glowLevel : 0;
+      const { bar, track, fill, warning } = model.fuelBar;
+      bar.visible = lantern.lit;
+      warning.visible = low && colorblind;
+      const ratio = lantern.fuel / tuning.fuel_max;
+      fill.scale.x = ratio;
+      fill.position.x = (ratio - 1) * FUEL_BAR_WIDTH / 2;
+      fill.material.color.set(low ? (colorblind ? COLORS.accessibleWarning : COLORS.lowFuel) : COLORS.lantern);
+      fill.material.opacity = glowLevel;
+      track.material.opacity = 0.6 + 0.34 * glowLevel;
+      warning.material.opacity = glowLevel;
       if (lantern.lit) lit++;
     }
     ambient.intensity = 0.15 + 0.55 * (lit / state.lanterns.length);
@@ -522,8 +606,8 @@ export function createScene(renderer, initial, tuning, layout) {
       root.rotation.z = shade.stunned ? 0.3 * Math.sin(elapsed * 15) : 0;
       body.color.set(shade.stunned ? COLORS.stunned : COLORS.shade);
       body.emissive.set(body.color);
-      eye.color.set(shade.stunned ? COLORS.core : COLORS.shadeRim);
-      rim.color.set(shade.stunned ? COLORS.stunned : COLORS.shadeRim);
+      eye.color.set(colorblind ? COLORS.accessibleRim : shade.stunned ? COLORS.core : COLORS.shadeRim);
+      rim.color.set(colorblind ? COLORS.accessibleRim : shade.stunned ? COLORS.stunned : COLORS.shadeRim);
       aura.material.opacity = shade.stunned ? 0.13 : 0.30;
     }
     removeAbsent(shades, state.shades);
@@ -566,6 +650,7 @@ export function createScene(renderer, initial, tuning, layout) {
     const offset = backdrop && camera.aspect > 1.1 ? 3.7 : 0;
     lookAt.set(foot.x - sin * 3.8 - cos * offset, foot.y + 1.55, foot.z - cos * 3.8 + sin * offset);
     camera.lookAt(lookAt);
+    for (const { fuelBar } of lanterns.values()) if (fuelBar.bar.visible) fuelBar.bar.quaternion.copy(camera.quaternion);
     renderer.render(scene, camera);
   }
 

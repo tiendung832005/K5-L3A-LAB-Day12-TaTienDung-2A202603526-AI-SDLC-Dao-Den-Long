@@ -1,20 +1,13 @@
 import { groundHeight } from './maps.js';
 import { direction, distance, position, TICKS_PER_SECOND } from './player.js';
+import { lowFuel, nearestLantern } from './lanterns.js';
 
-export const SHADE_STATES = ['spawning', 'wander', 'chase', 'recoil', 'stunned'];
+export const SHADE_STATES = ['spawning', 'wander', 'chase', 'recoil', 'stunned', 'drain'];
 export const DRIFTER_STATES = ['idle', 'chase', 'flee', 'removed'];
 const EDGE_MARGIN = 1e-8;
 const DRIFTER_FLEE_TICKS = 240;
-
-export function byId(a, b) {
-  const first = /^(.*?)(\d+)$/.exec(a.id);
-  const second = /^(.*?)(\d+)$/.exec(b.id);
-  if (first && second && first[1] === second[1]) {
-    const delta = Number(first[2]) - Number(second[2]);
-    if (delta) return delta;
-  }
-  return a.id < b.id ? -1 : Number(a.id > b.id);
-}
+const DRAIN_REACH = 2;
+const DRAIN_CHASE_RADIUS = 6;
 
 function heading(random) {
   const angle = random() * 2 * Math.PI;
@@ -27,6 +20,7 @@ export function makeShade(spawn, id, random, stunTicks, defaultState = 'wander')
   return {
     id, ...position(spawn), state, timer: spawn.state_ticks_left ?? duration[state] ?? 0,
     heading: heading(random), motion: null, ejection: null,
+    targetLanternId: spawn.target_lantern_id ?? null, drainTicks: 0,
   };
 }
 
@@ -64,8 +58,8 @@ function edgeOf(lantern, from, radius) {
 }
 
 export function updateSafeZones(shades, lit, radius) {
-  if (!lit.length) return;
   for (const shade of shades) {
+    if (shade.ejection && !lit.some(lantern => lantern.id === shade.ejection.lanternId)) shade.ejection = null;
     if (shade.ejection) continue;
     const lantern = lit.find(lantern => distance(shade, lantern) < radius);
     if (!lantern) continue;
@@ -73,7 +67,7 @@ export function updateSafeZones(shades, lit, radius) {
     if (lit.some(other => distance(target, other) < radius)) {
       target = { x: Math.max(...lit.map(other => other.x)) + radius + EDGE_MARGIN, z: shade.z };
     }
-    shade.ejection = { ...target, remaining: 30 };
+    shade.ejection = { ...target, lanternId: lantern.id, remaining: 30 };
   }
 }
 
@@ -94,11 +88,45 @@ function stepOutsideSafety(shade, vector, meters, lit, radius) {
 export function pushShade(shade, awayFrom, meters, ticks, state, stateTicks) {
   shade.state = state;
   shade.timer = stateTicks;
+  shade.targetLanternId = null;
+  shade.drainTicks = 0;
   shade.motion = { vector: direction(awayFrom, shade), speed: meters / ticks, remaining: ticks };
 }
 
-export function moveShades(shades, player, lit, speed, safeRadius, layout) {
+export function drainTarget(shade, lanternById, tuning) {
+  const target = lanternById.get(shade.targetLanternId);
+  return target && lowFuel(target, tuning) && distance(shade, target) <= DRAIN_REACH ? target : null;
+}
+
+function wander(shade, lanternById, lit, step, tuning, layout) {
+  const target = nearestLantern(shade, lanternById.values(), lantern => lowFuel(lantern, tuning)) ??
+    nearestLantern(shade, lanternById.values(), lantern => !lantern.lit);
+  shade.targetLanternId = target?.id ?? null;
+  if (target) {
+    const range = distance(shade, target);
+    if (!lowFuel(target, tuning) || range > DRAIN_REACH) {
+      stepOutsideSafety(shade, direction(shade, target), Math.min(range, step), lit, tuning.safe_radius);
+    }
+    if (lowFuel(target, tuning) && distance(shade, target) <= DRAIN_REACH) shade.state = 'drain';
+    return;
+  }
+  keepWanderingOnLand(shade, step, layout);
+  stepOutsideSafety(shade, shade.heading, step, lit, tuning.safe_radius);
+}
+
+export function moveShades(shades, player, lanternById, lit, speed, tuning, layout) {
+  const safeRadius = tuning.safe_radius;
   for (const shade of shades) {
+    const range = distance(shade, player);
+    const wasDraining = shade.state === 'drain';
+    if (wasDraining) {
+      const target = drainTarget(shade, lanternById, tuning);
+      const chase = target && player.respawn === 0 && range <= DRAIN_CHASE_RADIUS;
+      if (target && !chase && !shade.ejection) continue;
+      shade.state = chase ? 'chase' : 'wander';
+      shade.targetLanternId = null;
+      shade.drainTicks = 0;
+    }
     if (shade.ejection) {
       const target = shade.ejection;
       shade.x += (target.x - shade.x) / target.remaining;
@@ -117,18 +145,16 @@ export function moveShades(shades, player, lit, speed, safeRadius, layout) {
       continue;
     }
     if (shade.timer > 0 || shade.ejection) continue;
-    const range = distance(shade, player);
     if (shade.state === 'chase') {
       if (range > 18 || player.respawn > 0) shade.state = 'wander';
-    } else {
+    } else if (!wasDraining) {
       shade.state = range <= 12 && player.respawn === 0 ? 'chase' : 'wander';
     }
     if (shade.state === 'chase') {
+      shade.targetLanternId = null;
       stepOutsideSafety(shade, direction(shade, player), Math.min(range, speed / TICKS_PER_SECOND), lit, safeRadius);
-    } else {
-      const step = speed / (2 * TICKS_PER_SECOND);
-      keepWanderingOnLand(shade, step, layout);
-      stepOutsideSafety(shade, shade.heading, step, lit, safeRadius);
+    } else if (!wasDraining) {
+      wander(shade, lanternById, lit, speed / (2 * TICKS_PER_SECOND), tuning, layout);
     }
   }
 }
